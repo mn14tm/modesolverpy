@@ -45,7 +45,8 @@ def use_matplotlib():
 
 
 def compare_neighbors(arr):
-    # https: // codereview.stackexchange.com / questions / 178603 / compare - neighbors - in -array
+    """Returns true when all of the neighbouring elements of the 2D array arr are the same"""
+    # https://codereview.stackexchange.com/questions/178603/compare-neighbors-in-array
     from contextlib import suppress
     comp_arr = np.full(arr.shape, True, dtype=bool)
 
@@ -536,9 +537,9 @@ class _ModeSolver(with_metaclass(abc.ABCMeta)):
             im_ratio = heatmap.shape[0] / heatmap.shape[1]
             plt.colorbar(im, fraction=0.046*im_ratio, pad=0.04)
             nbounds = np.invert(compare_neighbors(np.real(self._structure.n)))
-            im2 = np.zeros(nbounds.shape + (4,))
-            im2[:, :, 3] = nbounds  # Set alpha value (only boundaries are opaque)
-            im2[:, :, 0:3] = [255, 255, 255]  # Set rgb value to white
+            im2 = np.zeros(nbounds.shape + (4,)) # Add RGBA column
+            im2[:, :, 3] = nbounds  # Set A value (only boundaries are opaque)
+            im2[:, :, 0:3] = [1, 1, 1]  # Set RGB value to white (1 is 255 as the array dtype=float)
             plt.imshow(im2[1:, :-1],
                        extent=(
                            args["x_min"],
