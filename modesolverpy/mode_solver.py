@@ -23,6 +23,7 @@ except:
 
     MPL = True
 
+
 def use_gnuplot():
     """
     Use gnuplot as the plotting tool for any mode related outputs.
@@ -32,6 +33,7 @@ def use_gnuplot():
     global MPL
     MPL = False
 
+
 def use_matplotlib():
     """
     Use matplotlib as the plotting tool for any mode related outputs.
@@ -40,6 +42,40 @@ def use_matplotlib():
     import matplotlib.pylab as plt
     global MPL
     MPL = True
+
+
+def compare_neighbors(arr):
+    # https: // codereview.stackexchange.com / questions / 178603 / compare - neighbors - in -array
+    from contextlib import suppress
+    comp_arr = np.full(arr.shape, True, dtype=bool)
+
+    for (x, y), item in np.ndenumerate(arr):
+        # Check left.
+        if x >= 0:
+            if arr[x - 1, y] != item:
+                comp_arr[x, y] = False
+                continue
+
+        # Check right.
+        with suppress(IndexError):
+            if arr[x + 1, y] != item:
+                comp_arr[x, y] = False
+                continue
+
+        # Check top.
+        with suppress(IndexError):
+            if arr[x, y + 1] != item:
+                comp_arr[x, y] = False
+                continue
+
+        # Check bottom.
+        if y >= 0:
+            if arr[x, y - 1] != item:
+                comp_arr[x, y] = False
+                continue
+
+    return comp_arr
+
 
 class _ModeSolver(with_metaclass(abc.ABCMeta)):
     def __init__(
@@ -168,7 +204,9 @@ class _ModeSolver(with_metaclass(abc.ABCMeta)):
                     title = "n_{effs} vs %s" % x_label
                     y_label = "n_{eff}"
                 self._plot_n_effs(
-                    self._modes_directory + filename, self._modes_directory + "fraction_te.dat", x_label, y_label, title
+                    self._modes_directory + filename,
+                    self._modes_directory + "fraction_te.dat",
+                    x_label, y_label, title
                 )
 
                 title = "TE Fraction vs %s" % x_label
@@ -299,6 +337,14 @@ class _ModeSolver(with_metaclass(abc.ABCMeta)):
         )
         return filename_mode
 
+    def _write_n_eff_to_file(self, n_effs, filename, x_vals=None):
+        with open(filename, "w") as fs:
+            fs.write('mode 1, mode 2, ...\n')
+            line_start = ""
+            line = ",".join([str(np.round(n, 3)) for n in n_effs])
+            fs.write(line_start + line + "\n")
+        return n_effs
+
     def _write_n_effs_to_file(self, n_effs, filename, x_vals=None):
         with open(filename, "w") as fs:
             fs.write('# Sweep param, mode 1, mode 2, ...\n')
@@ -335,22 +381,31 @@ class _ModeSolver(with_metaclass(abc.ABCMeta)):
 
         if MPL:
             data = np.loadtxt(args["filename_data"], delimiter=",").T
+            data2 = np.loadtxt(args["filename_frac_te"], delimiter=",")[:,1:].T * 100
             plt.clf()
-            plt.title(title)
+            plt.title(args["titl"])
             plt.xlabel(args["xlab"])
             plt.ylabel(args["ylab"])
+
+            import matplotlib.colors as mcolors
+            import matplotlib.cm as cm
+            colormap = cm.plasma
+            normalize = mcolors.Normalize(vmin=0, vmax=100)
             for i in range(args["num_modes"]):
-                plt.plot(data[0], data[i + 1], "-o")
-            plt.savefig(args["filename_image"])
+                sc = plt.scatter(data[0], data[i + 1], c=data2[i]
+                                 , cmap=colormap, norm=normalize, zorder=2)
+                plt.plot(data[0], data[i + 1], 'k-', zorder=1)
+
+            cbar = plt.colorbar(sc)
+            cbar.set_label('TE fraction [%]')
+            plt.savefig(args["filename_image"], dpi=300)
         else:
             gp.gnuplot(self._path + "n_effs.gpi", args, silent=False)
             gp.trim_pad_image(filename_image)
 
         return args
 
-    def _plot_fraction(
-        self, filename_fraction, xlabel, ylabel, title, mode_list=[]
-    ):
+    def _plot_fraction(self, filename_fraction, xlabel, ylabel, title, mode_list=None):
         if not mode_list:
             mode_list = range(len(self.modes))
         gp_mode_list = " ".join(str(idx) for idx in mode_list)
@@ -375,8 +430,9 @@ class _ModeSolver(with_metaclass(abc.ABCMeta)):
             plt.xlabel(args["xlab"])
             plt.ylabel(args["ylab"])
             for i, _ in enumerate(self.modes):
-                plt.plot(data[0], data[i + 1], "-o")
-            plt.savefig(args["filename_image"])
+                plt.plot(data[0], data[i + 1], "-o", label=i)
+            plt.legend(title='Mode')
+            plt.savefig(args["filename_image"], dpi=300)
         else:
             gp.gnuplot(self._path + "fractions.gpi", args, silent=False)
             gp.trim_pad_image(filename_image)
@@ -449,24 +505,50 @@ class _ModeSolver(with_metaclass(abc.ABCMeta)):
         if MPL:
             heatmap = np.loadtxt(filename_mode, delimiter=",")
             plt.clf()
-            plt.suptitle(title)
+            plt.suptitle(title, y=0.88)
             if subtitle:
                 plt.rcParams.update({"axes.titlesize": "small"})
                 plt.title(title2)
             plt.xlabel("x")
             plt.ylabel("y")
-            plt.imshow(
-                np.flipud(heatmap),
-                extent=(
-                    args["x_min"],
-                    args["x_max"],
-                    args["y_min"],
-                    args["y_max"],
-                ),
-                aspect="auto",
+            basic_cols = ['#adff2f', '#0000ff', '#000000', '#FF0000', '#ffff00']
+            from matplotlib.colors import LinearSegmentedColormap
+            cm = LinearSegmentedColormap.from_list('modecmap', basic_cols)
+            if abs(np.max(heatmap)) > abs(np.min(heatmap)):
+                inv = 1
+                smm = abs(np.max(heatmap))
+            else:
+                inv = -1
+                smm = abs(np.min(heatmap))
+            im = plt.imshow(
+                    np.flipud(heatmap)*inv,
+                    extent=(
+                        args["x_min"],
+                        args["x_max"],
+                        args["y_min"],
+                        args["y_max"],
+                    ),
+                    aspect="equal",
+                    cmap=cm,
+                    vmin=-smm,
+                    vmax=smm,
             )
-            plt.colorbar()
-            plt.savefig(filename_image)
+            im_ratio = heatmap.shape[0] / heatmap.shape[1]
+            plt.colorbar(im, fraction=0.046*im_ratio, pad=0.04)
+            nbounds = np.invert(compare_neighbors(np.real(self._structure.n)))
+            im2 = np.zeros(nbounds.shape + (4,))
+            im2[:, :, 3] = nbounds  # Set alpha value (only boundaries are opaque)
+            im2[:, :, 0:3] = [255, 255, 255]  # Set rgb value to white
+            plt.imshow(im2[1:, :-1],
+                       extent=(
+                           args["x_min"],
+                           args["x_max"],
+                           args["y_min"],
+                           args["y_max"],
+                       ),
+                       aspect="equal",
+                       interpolation='none')
+            plt.savefig(filename_image, bbox_inches='tight', dpi=300)
         else:
             gp.gnuplot(self._path + "mode.gpi", args)
             gp.trim_pad_image(filename_image)
@@ -563,8 +645,7 @@ class ModeSolverSemiVectorial(_ModeSolver):
                 Default is `True`.
 
         Returns:
-            dict: A dictionary containing the effective indices
-            and mode field profiles (if solved for).
+            dict: A list containing the mode field profiles.
         """
         modes_directory = "./modes_semi_vec/"
         if not os.path.isdir(modes_directory):
@@ -608,6 +689,65 @@ class ModeSolverSemiVectorial(_ModeSolver):
                     )
 
         return self.modes
+
+    def write_neffs_to_file(self, filename="n_eff.dat", plot=True, analyse=True):
+        """
+        Writes the n_effs fields to a file and optionally plots them.
+
+        Args:
+            filename (str): The nominal filename to use for the saved
+                data.  The suffix will be automatically be changed to
+                identifiy each mode number.  Default is 'mode.dat'
+            plot (bool): `True` if plots should be generates,
+                otherwise `False`.  Default is `True`.
+            analyse (bool): `True` if an analysis on the fundamental
+                mode should be performed.  The analysis adds to the
+                plot of the fundamental mode the power mode-field
+                diameter (MFD) and marks it on the output, and it
+                marks with a cross the maximum E-field value.
+                Default is `True`.
+
+        Returns:
+            dict: A list containing the n_effs of each mode.
+        """
+        modes_directory = "./modes_semi_vec/"
+        if not os.path.isdir(modes_directory):
+            os.mkdir(modes_directory)
+        filename = modes_directory + filename
+
+        self._write_n_eff_to_file(np.real(self.n_effs), filename)
+
+        if plot:
+            if i == 0 and analyse:
+                A, centre, sigma_2 = anal.fit_gaussian(
+                    self._structure.xc, self._structure.yc, np.abs(mode)
+                )
+                subtitle = (
+                               "E_{max} = %.3f, (x_{max}, y_{max}) = (%.3f, %.3f), MFD_{x} = %.3f, "
+                               "MFD_{y} = %.3f"
+                           ) % (A, centre[0], centre[1], sigma_2[0], sigma_2[1])
+                self._plot_mode(
+                    self._semi_vectorial_method,
+                    i,
+                    filename_mode,
+                    self.n_effs[i],
+                    subtitle,
+                    sigma_2[0],
+                    sigma_2[1],
+                    centre[0],
+                    centre[1],
+                    wavelength=self._structure._wl,
+                )
+            else:
+                self._plot_mode(
+                    self._semi_vectorial_method,
+                    i,
+                    filename_mode,
+                    self.n_effs[i],
+                    wavelength=self._structure._wl,
+                )
+
+        return self.n_effs
 
 
 class ModeSolverFullyVectorial(_ModeSolver):

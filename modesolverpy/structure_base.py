@@ -239,7 +239,7 @@ class _AbstractStructure(with_metaclass(abc.ABCMeta)):
         return self.n
 
     def write_to_file(self, filename='material_index.dat', plot=True):
-        '''
+        """
         Write the refractive index profile to file.
 
         Args:
@@ -247,7 +247,7 @@ class _AbstractStructure(with_metaclass(abc.ABCMeta)):
                 index data should be saved to.
             plot (bool): `True` if plots should be generates,
                 otherwise `False`.  Default is `True`.
-        '''
+        """
         path = os.path.dirname(sys.modules[__name__].__file__) + '/'
 
         with open(filename, 'w') as fs:
@@ -276,16 +276,19 @@ class _AbstractStructure(with_metaclass(abc.ABCMeta)):
                 plt.title(args['title'])
                 plt.xlabel('$x$')
                 plt.ylabel('$y$')
-                plt.imshow(np.flipud(heatmap),
+                im = plt.imshow(np.flipud(heatmap),
                            extent=(args['x_min'], args['x_max'], args['y_min'], args['y_max']),
-                           aspect="auto")
-                plt.colorbar()
-                plt.savefig(filename_image)
+                           aspect="equal",
+                           cmap='Blues')
+                im_ratio = heatmap.shape[0] / heatmap.shape[1]
+                plt.colorbar(im, fraction=0.046*im_ratio, pad=0.04)
+                plt.savefig(filename_image, bbox_inches='tight', dpi=300)
             else:
                 gp.gnuplot(path+'structure.gpi', args)
 
     def __str__(self):
         return self.n.__str__()
+
 
 class Structure(_AbstractStructure):
     def __init__(self, x_step, y_step, x_max, y_max, x_min=0., y_min=0.,
@@ -302,6 +305,7 @@ class Structure(_AbstractStructure):
     @property
     def n(self):
         return self._n
+
 
 class Slabs(_AbstractStructure):
     '''

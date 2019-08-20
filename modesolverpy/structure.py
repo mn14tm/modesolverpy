@@ -75,6 +75,75 @@ class RidgeWaveguide(sb.Slabs):
 
         self.add_slab(clad_height, n_clad)
 
+class StripWaveguide(sb.Slabs):
+    '''
+    A general strip waveguide structure.
+
+    Args:
+        wavelength (float): Wavelength the structure should
+            operate at.
+        x_step (float): The grid step in x that the structure
+            is created on.
+        y_step (float): The grid step in y that the structure
+            is created on.
+        sub_height (float): The thickness of the substrate.
+        sub_width (float): The width of the substrate.
+        film_height (float, str): The thickness of the
+            film the waveguide is on.  If the waveguide
+            is a true ridge (fully etched), then the film thickness
+            can be set to 'wg_height', otherwise the waveguide
+            is a rib waveguide, and a float should be given
+            specifying the thickness of the film.
+        st_height (float): The height of the strip.
+        st_width (float): The width of the strip.
+        clad_height (float): The thickness of the cladding.
+        n_sub (float, function): Refractive index of the
+            substrate.  Either a constant (`float`), or
+            a function that accepts one parameters, the
+            wavelength, and returns a float of the refractive
+            index.  This is useful when doing wavelength
+            sweeps and solving for the group velocity.  The
+            function provided could be a Sellmeier equation.
+        n_film (float, function): Refractive index of the
+            waveguide.  Either a constant (`float`), or
+            a function that accepts one parameters, the
+            wavelength, and returns a float of the refractive
+            index.  This is useful when doing wavelength
+            sweeps and solving for the group velocity.  The
+            function provided could be a Sellmeier equation.
+        n_strip (float, function): Refractive index of the
+            strip.  Either a constant (`float`), or
+            a function that accepts one parameters, the
+            wavelength, and returns a float of the refractive
+            index.  This is useful when doing wavelength
+            sweeps and solving for the group velocity.  The
+            function provided could be a Sellmeier equation.
+        n_clad (float, function): Refractive index of the
+            cladding.  Either a constant (`float`), or
+            a function that accepts one parameters, the
+            wavelength, and returns a float of the refractive
+            index.  This is useful when doing wavelength
+            sweeps and solving for the group velocity.  The
+            function provided could be a Sellmeier equation.
+            Default is air.
+    '''
+    def __init__(self, wavelength, x_step, y_step, sub_height, sub_width, film_height,
+                 st_height, st_width, clad_height, n_sub, n_film, n_strip, n_clad=mat.Air().n()):
+        sb.Slabs.__init__(self, wavelength, y_step, x_step, sub_width)
+
+        self.n_sub = n_sub
+        self.n_clad = n_clad
+        self.n_film = n_film
+        self.n_strip = n_strip
+
+        self.add_slab(sub_height, n_sub)
+        k = self.add_slab(film_height, n_film)
+        k = self.add_slab(st_height, n_clad)
+        self.slabs[k].add_material(self.x_ctr-st_width/2., self.x_ctr+st_width/2.,
+                                   n_strip, angle=0)
+
+        self.add_slab(clad_height, n_clad)
+
 class WgArray(sb.Slabs):
     def __init__(self, wavelength, x_step, y_step, wg_height, wg_widths, wg_gaps, sub_height,
                  sub_width, clad_height, n_sub, n_wg, angle=0, n_clad=mat.Air().n()):
